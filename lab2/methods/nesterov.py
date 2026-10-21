@@ -43,10 +43,13 @@ class Nesterov(Method):
         x_prev = state.get("x_prev")
         if x_prev is None:
             x_prev = x
+            
         k = state.get("nesterov_k", 0)
-        beta = k / (k + 3.0)             
+        beta = k / (k + 3.0) 
+        
         y = x + beta * (x - x_prev)      
-        g = self.oracle.grad(y)         
+        g = self.oracle.grad(y)
+        
         state["x_prev"] = x
         state["x"] = y - self.step * g
         state["nesterov_k"] = k + 1
