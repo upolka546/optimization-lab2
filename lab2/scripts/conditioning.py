@@ -1,146 +1,129 @@
+
 import numpy as np
 import matplotlib.pyplot as plt
-from oracles.media_mix import MediaMixOracle, ScaledOracle
+from oracles.media_mix import MediaMixOracle
 
 
 def kappa(H):
-    """Число обусловленности симметричной матрицы H."""
-    e = np.linalg.eigvalsh(H)          # собственные значения по возрастанию
+    e = np.linalg.eigvalsh(H)
     return e.max() / e.min(), e.min(), e.max()
 
 
 def solution_point(oracle):
-    """Точка оптимума x*. Если у оракула нет x_star, берём внутренний метод Ньютона."""
-    if hasattr(oracle, "x_star"):
-        return oracle.x_star
-    return oracle._newton()
+    return oracle.info.x_star.copy()
 
 
-# κ в стартовой точке и в оптимуме
-oracle = MediaMixOracle()                       # параметры по умолчанию
-x0 = np.zeros(oracle.dim) + 1e-3                # стартовая точка
+class ScaledOracle:
+    def __init__(self, oracle, d):
+        self.oracle = oracle
+        self.d = np.asarray(d, dtype=float)
+        self.dim = oracle.dim
+        self.name = f"scaled({oracle.name})"
+
+    def f(self, u):
+        return self.oracle.f(self.d * u)
+
+    def grad(self, u):
+        return self.d * self.oracle.grad(self.d * u)
+
+    def hess(self, u):
+        H = self.oracle.hess(self.d * u)
+        return self.d[:, None] * H * self.d[None, :]
+
+    def hess_diag(self, u):
+        return self.d**2 * self.oracle.hess_diag(self.d * u)
+
+    def hess_vec(self, u, v):
+        return self.d * self.oracle.hess_vec(self.d * u, self.d * v)
+
+
+oracle = MediaMixOracle()
+x0 = np.zeros(oracle.dim) + 1e-3
 x_star = solution_point(oracle)
 
 for name, x in [("x0 (старт)", x0), ("x* (оптимум)", x_star)]:
     k, lo, hi = kappa(oracle.hess(x))
     print(f"{name}: kappa={k:.1f}, lambda_min={lo:.3f}, lambda_max={hi:.3f}")
 
-# как κ зависит от разброса каналов b_spread 
-spreads = [1, 5, 10, 30, 100]
-kappas_b = []
-for s in spreads:
-    o = MediaMixOracle(b_spread=s)
-    kappas_b.append(kappa(o.hess(solution_point(o)))[0])
-    print(f"b_spread={s}: kappa={kappas_b[-1]:.1f}")
+rhos = [0.1, 0.3, 1.0, 3.0, 10.0]
+kappas_rho, overspend = [], []
 
-# как κ зависит от штрафа бюджета mu_pen
-mus = [1, 3, 10, 30, 100]
-kappas_mu, overspend = [], []
-for m in mus:
-    o = MediaMixOracle(mu_pen=m)
+for rho in rhos:
+    o = MediaMixOracle(rho=rho)
     xs = solution_point(o)
-    kappas_mu.append(kappa(o.hess(xs))[0])
-    overspend.append(xs.sum() - o.B)            # перерасход бюджета
-    print(f"mu_pen={m}: kappa={kappas_mu[-1]:.1f}, sum(x)-B={overspend[-1]:+.3f}")
+    kappas_rho.append(kappa(o.hess(xs))[0])
+    overspend.append(xs.sum() - o.B)
+    print(f"rho={rho}: kappa={kappas_rho[-1]:.1f}, sum(x)-B={overspend[-1]:+.3f}")
 
-# κ после предобуславливания (масштабирование по Якоби) 
-d = 1.0 / np.sqrt(oracle.hess_diag(x0))         # d_i = 1/sqrt(H_ii)
+lams = [0.001, 0.01, 0.05, 0.2, 1.0]
+kappas_lam = []
+
+for lam in lams:
+    o = MediaMixOracle(lam=lam)
+    xs = solution_point(o)
+    kappas_lam.append(kappa(o.hess(xs))[0])
+    print(f"lam={lam}: kappa={kappas_lam[-1]:.1f}")
+
+gammas = [1.0, 3.0, 10.0, 30.0, 100.0]
+kappas_gamma = []
+
+for gamma in gammas:
+    o = MediaMixOracle(gamma=gamma)
+    xs = solution_point(o)
+    kappas_gamma.append(kappa(o.hess(xs))[0])
+    print(f"gamma={gamma}: kappa={kappas_gamma[-1]:.1f}")
+
+d = 1.0 / np.sqrt(oracle.hess_diag(x0))
 scaled = ScaledOracle(oracle, d)
-u_star = x_star / d                             # та же точка в новых координатах
+u_star = x_star / d
+
 k_before = kappa(oracle.hess(x_star))[0]
 k_after = kappa(scaled.hess(u_star))[0]
 print(f"kappa до: {k_before:.1f}, после масштабирования: {k_after:.1f}")
 
-# κ от alpha (регуляризация) -------------------------------
-alphas = [0.001, 0.01, 0.05, 0.2, 1.0]
-kappas_a = []
-for al in alphas:
-    o = MediaMixOracle(alpha=al)
-    kappas_a.append(kappa(o.hess(solution_point(o)))[0])
-    print(f"alpha={al}: kappa={kappas_a[-1]:.1f}")
-
 plt.figure(figsize=(5, 4))
-plt.plot(alphas, kappas_a, "o-")
+plt.plot(lams, kappas_lam, "o-")
 plt.xscale("log")
-plt.xlabel("alpha"); plt.ylabel("kappa"); plt.title("κ от регуляризации")
+plt.yscale("log")
+plt.xlabel("lam")
+plt.ylabel("kappa")
+plt.title("κ от регуляризации")
 plt.tight_layout()
-plt.savefig("kappa_vs_alpha.png", dpi=150)
+plt.savefig("kappa_vs_lam.png", dpi=150)
+plt.close()
 
 
-# линии уровня в 2D 
 def contour_on_plane(ax, f, ref, i, j, title):
-    """Рисует линии уровня f, меняя только координаты i и j, остальные фиксированы."""
-    gi = np.linspace(0, 2.5 * ref[i], 120)
-    gj = np.linspace(0, 2.5 * ref[j], 120)
+    gi = np.linspace(0, max(1e-6, 2.5 * ref[i]), 100)
+    gj = np.linspace(0, max(1e-6, 2.5 * ref[j]), 100)
     Z = np.zeros((len(gj), len(gi)))
+
     for a, vi in enumerate(gi):
         for b, vj in enumerate(gj):
             p = ref.copy()
             p[i], p[j] = vi, vj
             Z[b, a] = f(p)
+
     ax.contour(gi, gj, Z, levels=25)
-    ax.plot(ref[i], ref[j], "r*", markersize=12)   # оптимум
+    ax.plot(ref[i], ref[j], "r*", markersize=12)
     ax.set(title=title, xlabel=f"x{i+1}", ylabel=f"x{j+1}")
 
-i, j = 0, oracle.dim - 1          # самый быстрый и самый медленный канал
+
+i, j = 0, oracle.dim - 1
 fig, ax = plt.subplots(1, 2, figsize=(11, 4.5))
 contour_on_plane(ax[0], oracle.f, x_star, i, j, "Исходные координаты")
 contour_on_plane(ax[1], scaled.f, u_star, i, j, "После масштабирования")
 plt.tight_layout()
 plt.savefig("contours.png", dpi=150)
-print("Saved: kappa_vs_alpha.png, contours.png")
+plt.close()
 
-# Графики 
 fig, ax = plt.subplots(1, 2, figsize=(10, 4))
-ax[0].plot(spreads, kappas_b, "o-")
-ax[0].set(xscale="log", xlabel="b_spread", ylabel="kappa", title="κ от разброса каналов")
-ax[1].plot(mus, kappas_mu, "o-")
-ax[1].set(xscale="log", xlabel="mu_pen", ylabel="kappa", title="κ от штрафа бюджета")
+ax[0].plot(rhos, kappas_rho, "o-")
+ax[0].set(xscale="log", yscale="log", xlabel="rho", ylabel="kappa", title="κ от штрафа бюджета")
+ax[1].plot(gammas, kappas_gamma, "o-")
+ax[1].set(xscale="log", yscale="log", xlabel="gamma", ylabel="kappa", title="κ от штрафа отрицательных координат")
 plt.tight_layout()
 plt.savefig("conditioning.png", dpi=150)
-print("Saved: conditioning.png")
+plt.close()
 
-# все собственные значения гессиана (спектр)
-eig_x = np.linalg.eigvalsh(oracle.hess(x_star))
-eig_u = np.linalg.eigvalsh(scaled.hess(u_star))
-print("Собственные значения в x*:        ", np.round(eig_x, 2))
-print("Собственные значения после scaling:", np.round(eig_u, 2))
-
-plt.figure(figsize=(5, 4))
-plt.semilogy(range(1, len(eig_x) + 1), eig_x, "o-", label="исходная")
-plt.semilogy(range(1, len(eig_u) + 1), eig_u, "s-", label="после масштабирования")
-plt.xlabel("номер собственного значения"); plt.ylabel("λ (лог. шкала)")
-plt.title("Спектр гессиана"); plt.legend()
-plt.tight_layout()
-plt.savefig("spectrum.png", dpi=150)
-
-def newton(o, x0, tol=1e-6, max_iter=100):
-    """Метод Ньютона с проверкой убывания (чтобы не улететь за дно)."""
-    x = x0.copy()
-    for k in range(max_iter):
-        g = o.grad(x)
-        if np.linalg.norm(g) <= tol:
-            return k
-        step = np.linalg.solve(o.hess(x), g)    # решаем H * step = g
-        t = 1.0
-        while o.f(x - t * step) > o.f(x) and t > 1e-10:
-            t *= 0.5                            # если функция выросла, шаг делим пополам
-        x = x - t * step
-    return max_iter
-
-
-def gd_iters(o, x0, tol=1e-6, max_iter=20000):
-    L = max(np.linalg.eigvalsh(o.hess(x0)).max(),
-            np.linalg.eigvalsh(o.hess(solution_point(o))).max())
-    x = x0.copy()
-    for k in range(max_iter):
-        g = o.grad(x)
-        if np.linalg.norm(g) <= tol:
-            return k
-        x = x - g / L
-    return max_iter
-
-
-print("\nGD vs Ньютон (итераций до ||grad|| <= 1e-6):")
-for name, o, start in [("исходная", oracle, x0), ("масштабированная", scaled, x0 / d)]:
-    print(f"  {name:18s} GD: {gd_iters(o, start):6d}   Ньютон: {newton(o, start):3d}")
+print("Saved: kappa_vs_lam.png, contours.png, conditioning.png")
