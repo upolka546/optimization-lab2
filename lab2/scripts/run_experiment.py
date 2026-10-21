@@ -11,7 +11,7 @@ import numpy as np
 import yaml
 
 from oracles import QuadraticOracle, LogisticOracle
-from methods import GD, AdaptiveStep
+from methods import GD, AdaptiveStep, HeavyBall, Nesterov
 
 
 # ---------------------- checks ----------------------
@@ -94,7 +94,8 @@ def run_checks(cfg):
 # ---------------------- runner ----------------------
 
 ORACLES = {"quadratic": QuadraticOracle, "logistic": LogisticOracle}
-METHODS = {"gd": GD, "adaptive": AdaptiveStep}
+METHODS = {"gd": GD, "adaptive": AdaptiveStep,
+           "heavy_ball": HeavyBall, "nesterov": Nesterov}
 
 
 def _build_oracle(cfg):
