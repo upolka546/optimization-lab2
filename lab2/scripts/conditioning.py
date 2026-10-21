@@ -99,3 +99,48 @@ ax[1].set(xscale="log", xlabel="mu_pen", ylabel="kappa", title="κ от штра
 plt.tight_layout()
 plt.savefig("conditioning.png", dpi=150)
 print("Saved: conditioning.png")
+
+# все собственные значения гессиана (спектр)
+eig_x = np.linalg.eigvalsh(oracle.hess(x_star))
+eig_u = np.linalg.eigvalsh(scaled.hess(u_star))
+print("Собственные значения в x*:        ", np.round(eig_x, 2))
+print("Собственные значения после scaling:", np.round(eig_u, 2))
+
+plt.figure(figsize=(5, 4))
+plt.semilogy(range(1, len(eig_x) + 1), eig_x, "o-", label="исходная")
+plt.semilogy(range(1, len(eig_u) + 1), eig_u, "s-", label="после масштабирования")
+plt.xlabel("номер собственного значения"); plt.ylabel("λ (лог. шкала)")
+plt.title("Спектр гессиана"); plt.legend()
+plt.tight_layout()
+plt.savefig("spectrum.png", dpi=150)
+
+def newton(o, x0, tol=1e-6, max_iter=100):
+    """Метод Ньютона с проверкой убывания (чтобы не улететь за дно)."""
+    x = x0.copy()
+    for k in range(max_iter):
+        g = o.grad(x)
+        if np.linalg.norm(g) <= tol:
+            return k
+        step = np.linalg.solve(o.hess(x), g)    # решаем H * step = g
+        t = 1.0
+        while o.f(x - t * step) > o.f(x) and t > 1e-10:
+            t *= 0.5                            # если функция выросла, шаг делим пополам
+        x = x - t * step
+    return max_iter
+
+
+def gd_iters(o, x0, tol=1e-6, max_iter=20000):
+    L = max(np.linalg.eigvalsh(o.hess(x0)).max(),
+            np.linalg.eigvalsh(o.hess(solution_point(o))).max())
+    x = x0.copy()
+    for k in range(max_iter):
+        g = o.grad(x)
+        if np.linalg.norm(g) <= tol:
+            return k
+        x = x - g / L
+    return max_iter
+
+
+print("\nGD vs Ньютон (итераций до ||grad|| <= 1e-6):")
+for name, o, start in [("исходная", oracle, x0), ("масштабированная", scaled, x0 / d)]:
+    print(f"  {name:18s} GD: {gd_iters(o, start):6d}   Ньютон: {newton(o, start):3d}")
