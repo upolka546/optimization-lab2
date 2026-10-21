@@ -25,14 +25,14 @@ class LogisticOracle(Oracle):
 
     def f(self, w: np.ndarray) -> float:
         z = -self.y * (self.X @ w)
-        loss = # TODO
+        loss = float(np.mean(np.logaddexp(0.0, z)))
         return loss + 0.5 * self.l2 * w @ w
 
     def grad(self, w: np.ndarray) -> np.ndarray:
-        z = # TODO
+        z = -self.y * (self.X @ w)
         sig = 1.0 / (1.0 + np.exp(-z))       # sigmoid(z)
-        g = # TODO
+        g = -(self.X.T @ (self.y * sig)) / len(self.y)
         return g + self.l2 * w
     
     def hess(self, x: np.ndarray) -> np.ndarray:
-        return # TODO
+        return (self.X.T * d) @ self.X / n + self.l2 * np.eye(self.dim)
