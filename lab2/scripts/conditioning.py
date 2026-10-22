@@ -1,7 +1,33 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from oracles.media_mix import MediaMixOracle, ScaledOracle
+from oracles.media_mix import MediaMixOracle
+
+
+
+class ScaledOracle:
+    """Оракул в масштабированных координатах x = d * u."""
+
+    def __init__(self, oracle, d):
+        self.oracle = oracle
+        self.d = np.asarray(d, dtype=float)
+        self.dim = oracle.dim
+
+    def f(self, u):
+        return self.oracle.f(self.d * u)
+
+    def grad(self, u):
+        # Правило цепочки: grad_u f = D * grad_x f
+        return self.d * self.oracle.grad(self.d * u)
+
+    def hess(self, u):
+        # Правило цепочки: H_u = D * H_x * D
+        H = self.oracle.hess(self.d * u)
+        return self.d[:, None] * H * self.d[None, :]
+
+    def hess_diag(self, u):
+        return np.diag(self.hess(u))
+
 
 def hessian_stats(H):
     """Минимальное и максимальное собственные значения и число обусловленности."""
