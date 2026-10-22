@@ -73,7 +73,7 @@ for gamma in gammas:
     kappas_gamma.append(kappa(o.hess(xs))[0])
     print(f"gamma={gamma}: kappa={kappas_gamma[-1]:.1f}")
 
-d = 1.0 / np.sqrt(oracle.hess_diag(x0))
+d = 1.0 / np.sqrt(oracle.hess_diag(x_star))
 scaled = ScaledOracle(oracle, d)
 u_star = x_star / d
 
