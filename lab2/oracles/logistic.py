@@ -35,7 +35,7 @@ class LogisticOracle(Oracle):
         return g + self.l2 * w
     
     def hess(self, x: np.ndarray) -> np.ndarray:
-        z = -self.y * (self.X @ w)
+        z = -self.y * (self.X @ x)
         sig = 1.0 / (1.0 + np.exp(-z))
         d = sig * (1.0 - sig)          # вес каждого объекта: σ(1−σ)
         n = len(self.y)
