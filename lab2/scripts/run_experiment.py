@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from oracles import QuadraticOracle, LogisticOracle
+from oracles import QuadraticOracle, LogisticOracle, MediaMixOracle
 from methods import GD, AdaptiveStep, HeavyBall, Nesterov
 
 
@@ -66,7 +66,10 @@ def run_checks(cfg):
     """
     oracle = _build_oracle(cfg["oracle"])
     x_probe = np.random.default_rng(0).standard_normal(oracle.dim)
-    x0 = np.zeros(oracle.dim)
+    if isinstance(oracle, MediaMixOracle):             #изначально равномерное распределение бюджета
+        x0 = oracle.xbar.copy()
+    else:
+        x0 = np.zeros(oracle.dim)
 
     print(f"[checks] oracle = {oracle.name}")
 
@@ -93,7 +96,7 @@ def run_checks(cfg):
 
 # ---------------------- runner ----------------------
 
-ORACLES = {"quadratic": QuadraticOracle, "logistic": LogisticOracle}
+ORACLES = {"quadratic": QuadraticOracle, "logistic": LogisticOracle, "media_mix": MediaMixOracle}
 METHODS = {"gd": GD, "adaptive": AdaptiveStep,
            "heavy_ball": HeavyBall, "nesterov": Nesterov}
 
@@ -115,7 +118,10 @@ def run_experiment(cfg):
     method = _build_method(cfg["method"], oracle)
 
     # fixed initial conditions
-    x0 = np.zeros(oracle.dim)
+    if isinstance(oracle, MediaMixOracle):             #изначально равномерное распределение бюджета
+        x0 = oracle.xbar.copy()
+    else:
+        x0 = np.zeros(oracle.dim)
     history = method.run(x0)
 
     return {"oracle": oracle, "method": method, "history": history, "config": cfg}
@@ -137,6 +143,7 @@ def save_results(result, out_dir):
         "grad_norm": hist.grad_norm,
         "step_size": hist.step_size,
         "n_iter": len(hist.f),
+        "x": [x.tolist() for x in hist.x],
     }
     path.write_text(json.dumps(payload, indent=2))
     return path
