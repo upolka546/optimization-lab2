@@ -3,12 +3,12 @@ from .base import Oracle, OracleInfo
 
 # Синтетические каналы: (название, a, b); a — максимальный отклик, b — полунасыщение
 _CHANNELS = {
-    "TV": (60.0, 40.0),
-    "Digital": (35.0, 8.0),
-    "OOH": (15.0, 10.0),
-    "Search": (25.0, 3.0),
-    "Social": (30.0, 6.0),
-    "Radio": (6.0, 0.5),
+    "TV": (180.0, 40.0),
+    "Digital": (150.0, 25.0),
+    "OOH": (90.0, 30.0),
+    "Search": (120.0, 10.0),
+    "Social": (100.0, 15.0),
+    "Radio": (60.0, 8.0),
 }
 _ORDER_6 = ["TV", "Digital", "OOH", "Search", "Social", "Radio"]
 _ORDER_2 = ["Search", "TV"]
@@ -17,17 +17,18 @@ _ORDER_2 = ["Search", "TV"]
 class MediaMixOracle(Oracle):
     """Оптимизация медиамикса (бюджет заменён штрафом).
 
-    F(x) = - sum r_i(x_i) + rho/2 (sum x - B)^2
-           + gamma/2 sum max(0, -x_i)^2 + lam/2 sum (x_i - xbar_i)^2
+    F(x) = - sum_i f_i(x_i) + mu/2 (sum x_i - B)^2
+           + rho/2 sum min(x_i, 0)^2 + alpha/2 ||x||^2
 
-    r_i(x) = a_i x / (b_i + x) (функция Хилла) при x >= 0. У Хилла полюс в
-    x = -b, поэтому при x < 0 берём C1-продолжение r_i(x) = (a_i/b_i) x
+    f_i(x) = a_i x / (b_i + x) (функция Хилла, h=1) при x >= 0. У Хилла полюс
+    в x = -b, поэтому при x < 0 берём C1-продолжение f_i(x) = (a_i/b_i) x
     (то же значение и наклон в нуле). Тогда F выпукла и конечна всюду.
-    xbar — прошлогодний план (равное деление бюджета).
+    mu — штраф за отклонение суммы от бюджета, rho — штраф за отрицательные
+    x_i, alpha — L2-регуляризация к нулю (сильная выпуклость).
     """
 
     def __init__(self, n_channels: int = 6, budget: float = 100.0,
-                 rho: float = 1.0, gamma: float = 10.0, lam: float = 0.01,
+                 mu: float = 1.0, rho: float = 10.0, alpha: float = 0.005,
                  seed: int = 0, noise: float = 0.0):
         n = n_channels
         rng = np.random.default_rng(seed)
@@ -49,9 +50,10 @@ class MediaMixOracle(Oracle):
 
         self.dim = n
         self.B = float(budget)
-        self.rho, self.gamma, self.lam = rho, gamma, lam
-        self.xbar = np.full(n, self.B / n)
-        self.name = f"media_mix(n={n}, B={budget:g}, rho={rho:g}, lam={lam:g})"
+        self.mu, self.rho, self.alpha = mu, rho, alpha
+        # стартовая точка Ньютона (равное деление бюджета); в F не входит
+        self.x_start = np.full(n, self.B / n)
+        self.name = f"media_mix(n={n}, B={budget:g}, mu={mu:g}, rho={rho:g}, alpha={alpha:g})"
         self._x_star, self._f_star = self._solve()
 
     # ---------- отклик ----------
@@ -82,27 +84,27 @@ class MediaMixOracle(Oracle):
     # ---------- оракул ----------
     def f(self, x: np.ndarray) -> float:
         s = np.sum(x) - self.B
-        return float(-np.sum(self.response(x)) + 0.5 * self.rho * s * s
-                     + 0.5 * self.gamma * np.sum(np.maximum(0.0, -x) ** 2)
-                     + 0.5 * self.lam * np.sum((x - self.xbar) ** 2))
+        return float(-np.sum(self.response(x)) + 0.5 * self.mu * s * s
+                     + 0.5 * self.rho * np.sum(np.minimum(x, 0.0) ** 2)
+                     + 0.5 * self.alpha * np.sum(x * x))
 
     def grad(self, x: np.ndarray) -> np.ndarray:
         s = np.sum(x) - self.B
-        return (-self._dr(x) + self.rho * s + self.gamma * np.minimum(x, 0.0)
-                + self.lam * (x - self.xbar))
+        return (-self._dr(x) + self.mu * s + self.rho * np.minimum(x, 0.0)
+                + self.alpha * x)
 
     def _diag(self, x):
-        return -self._ddr(x) + self.gamma * (x < 0) + self.lam
+        return -self._ddr(x) + self.rho * (x < 0) + self.alpha
 
     def hess(self, x: np.ndarray) -> np.ndarray:
-        return np.diag(self._diag(x)) + self.rho * np.ones((self.dim, self.dim))
+        return np.diag(self._diag(x)) + self.mu * np.ones((self.dim, self.dim))
 
     def hess_diag(self, x: np.ndarray) -> np.ndarray:
-        return self._diag(x) + self.rho
+        return self._diag(x) + self.mu
 
     def hess_vec(self, x: np.ndarray, v: np.ndarray) -> np.ndarray:
         # диагональ + ранг один: O(n)
-        return self._diag(x) * v + self.rho * np.sum(v)
+        return self._diag(x) * v + self.mu * np.sum(v)
 
     def local_condition(self, x: np.ndarray):
         """(lam_min, lam_max, kappa) гессиана в точке x."""
@@ -112,7 +114,7 @@ class MediaMixOracle(Oracle):
     # ---------- решение ----------
     def _solve(self):
         """Метод Ньютона с backtracking; проверка через scipy."""
-        x = self.xbar.copy()
+        x = self.x_start.copy()
         for _ in range(100):
             g = self.grad(x)
             if np.linalg.norm(g) < 1e-12:
@@ -124,7 +126,7 @@ class MediaMixOracle(Oracle):
             x = x + t * p
         f_star = self.f(x)
         from scipy.optimize import minimize
-        res = minimize(self.f, self.xbar, jac=self.grad, method="trust-exact",
+        res = minimize(self.f, self.x_start, jac=self.grad, method="trust-exact",
                        hess=self.hess, options={"gtol": 1e-12})
         assert np.allclose(res.x, x, rtol=1e-6, atol=1e-6) and abs(res.fun - f_star) < 1e-9, \
             f"Newton и scipy расходятся: {np.max(np.abs(res.x - x)):.2e}"
@@ -132,9 +134,11 @@ class MediaMixOracle(Oracle):
 
     @property
     def info(self) -> OracleInfo:
-        # Кривизна Хилла максимальна в x=0: -r'' = 2a/b^2; при x<0 даёт gamma.
-        # Штраф бюджета — rank-one rho*11^T с собственным значением n*rho.
-        L = float(np.max(np.maximum(2 * self.a / self.b ** 2, self.gamma))
-                  + self.dim * self.rho + self.lam)
-        return OracleInfo(L=L, mu=self.lam, x_star=self._x_star.copy(),
+        # Кривизна Хилла максимальна в x=0: -f'' = 2a/b^2; при x<0 даёт rho.
+        # Штраф бюджета — rank-one mu*11^T с собственным значением n*mu.
+        # ВНИМАНИЕ: в OracleInfo поле `mu` = константа сильной выпуклости
+        # (это alpha), а НЕ штраф бюджета self.mu.
+        L = float(np.max(np.maximum(2 * self.a / self.b ** 2, self.rho))
+                  + self.dim * self.mu + self.alpha)
+        return OracleInfo(L=L, mu=self.alpha, x_star=self._x_star.copy(),
                           f_star=self._f_star)
