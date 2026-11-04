@@ -47,7 +47,7 @@ def print_table(title, headers, rows):
 
 oracle = MediaMixOracle()
 
-x0 = np.zeros(oracle.dim)
+x0 = np.full(oracle.dim, oracle.B / oracle.dim)
 x_star = solution_point(oracle)
 
 
@@ -79,7 +79,7 @@ print_table(
 
 
 # Масштабируем координаты по диагонали гессиана
-d = 1.0 / np.sqrt(oracle.hess_diag(x0))
+d = 1.0 / np.sqrt(oracle.hess_diag(x_star))
 
 
 # Новый оракул в координатах x = d * u
