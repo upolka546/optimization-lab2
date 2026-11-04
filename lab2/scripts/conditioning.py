@@ -3,388 +3,211 @@ import matplotlib.pyplot as plt
 
 from oracles.media_mix import MediaMixOracle
 
-
-
-class ScaledOracle:
-    """Оракул в масштабированных координатах x = d * u."""
-
-    def __init__(self, oracle, d):
-        self.oracle = oracle
-        self.d = np.asarray(d, dtype=float)
-        self.dim = oracle.dim
-
-    def f(self, u):
-        return self.oracle.f(self.d * u)
-
-    def grad(self, u):
-        # Правило цепочки: grad_u f = D * grad_x f
-        return self.d * self.oracle.grad(self.d * u)
-
-    def hess(self, u):
-        # Правило цепочки: H_u = D * H_x * D
-        H = self.oracle.hess(self.d * u)
-        return self.d[:, None] * H * self.d[None, :]
-
-    def hess_diag(self, u):
-        return np.diag(self.hess(u))
+def solution_point(oracle):
+    """Возвращает оптимум медиамикса."""
+    return oracle.info.x_star.copy()
 
 
 def hessian_stats(H):
-    """Минимальное и максимальное собственные значения и число обусловленности."""
+    """Собственные значения и число обусловленности."""
     eig = np.linalg.eigvalsh(H)
+
     lam_min = eig.min()
     lam_max = eig.max()
 
-    if lam_min <= 0:
-        kappa_value = np.inf
-    else:
-        kappa_value = lam_max / lam_min
+    kappa = lam_max / lam_min if lam_min > 0 else np.inf
 
-    return kappa_value, lam_min, lam_max, eig
-
-
-def solution_point(oracle):
-    """Находим точку оптимума."""
-    if hasattr(oracle, "x_star"):
-        return oracle.x_star.copy()
-    return oracle._newton()
+    return kappa, lam_min, lam_max, eig
 
 
 def print_table(title, headers, rows):
-    """Печатает таблицу без дополнительных библиотек."""
-    print(f"\n{title}")
+    """Печатает таблицу."""
+
+    print("\n" + title)
+
     widths = [
         max(len(str(headers[i])),
             *(len(str(row[i])) for row in rows))
         for i in range(len(headers))
     ]
 
-    print(" | ".join(str(v).ljust(widths[i])
-                     for i, v in enumerate(headers)))
+    print(" | ".join(
+        str(v).ljust(widths[i])
+        for i, v in enumerate(headers)
+    ))
+
     print("-+-".join("-" * w for w in widths))
 
     for row in rows:
-        print(" | ".join(str(v).ljust(widths[i])
-                         for i, v in enumerate(row)))
+        print(" | ".join(
+            str(v).ljust(widths[i])
+            for i, v in enumerate(row)
+        ))
 
 
 oracle = MediaMixOracle()
-x0 = np.zeros(oracle.dim) + 1e-3
+
+x0 = np.zeros(oracle.dim)
 x_star = solution_point(oracle)
 
-points = [
-    ("Стартовая точка x0", x0),
-    ("Оптимум x*", x_star),
-]
+
 
 rows = []
 
-for name, x in points:
-    k, lo, hi, eig = hessian_stats(oracle.hess(x))
+for name, x in [
+    ("x0 = 0", x0),
+    ("x* (оптимум)", x_star),
+]:
+
+    kappa, lam_min, lam_max, eig = hessian_stats(
+        oracle.hess(x)
+    )
+
     rows.append((
         name,
-        f"{lo:.6f}",
-        f"{hi:.6f}",
-        f"{k:.2f}",
+        f"{kappa:.2f}",
+        f"{lam_min:.3f}",
+        f"{lam_max:.2f}",
     ))
+
 
 print_table(
     "1. Обусловленность гессиана",
-    ["Точка", "lambda_min", "lambda_max", "kappa"],
+    ["Точка", "kappa", "lambda_min", "lambda_max"],
     rows,
 )
 
 
-spreads = [1, 5, 10, 30, 100]
-kappas_b = []
-rows = []
-
-for spread in spreads:
-    o = MediaMixOracle(b_spread=spread)
-    xs = solution_point(o)
-    k, lo, hi, _ = hessian_stats(o.hess(xs))
-
-    kappas_b.append(k)
-    rows.append((
-        spread,
-        f"{lo:.6f}",
-        f"{hi:.6f}",
-        f"{k:.2f}",
-    ))
-
-print_table(
-    "2. Влияние b_spread на обусловленность в оптимуме",
-    ["b_spread", "lambda_min", "lambda_max", "kappa"],
-    rows,
-)
-
-
-mus = [1, 3, 10, 30, 100]
-kappas_mu = []
-overspend = []
-rows = []
-
-for mu in mus:
-    o = MediaMixOracle(mu_pen=mu)
-    xs = solution_point(o)
-    k, lo, hi, _ = hessian_stats(o.hess(xs))
-
-    excess = xs.sum() - o.B
-
-    kappas_mu.append(k)
-    overspend.append(excess)
-
-    rows.append((
-        mu,
-        f"{lo:.6f}",
-        f"{hi:.6f}",
-        f"{k:.2f}",
-        f"{excess:+.6f}",
-    ))
-
-print_table(
-    "3. Влияние штрафа mu_pen",
-    ["mu_pen", "lambda_min", "lambda_max",
-     "kappa", "sum(x)-B"],
-    rows,
-)
-
-
-
-alphas = [0.001, 0.01, 0.05, 0.2, 1.0]
-kappas_a = []
-rows = []
-
-for alpha in alphas:
-    o = MediaMixOracle(alpha=alpha)
-    xs = solution_point(o)
-    k, lo, hi, _ = hessian_stats(o.hess(xs))
-
-    kappas_a.append(k)
-    rows.append((
-        alpha,
-        f"{lo:.6f}",
-        f"{hi:.6f}",
-        f"{k:.2f}",
-    ))
-
-print_table(
-    "4. Влияние регуляризации alpha",
-    ["alpha", "lambda_min", "lambda_max", "kappa"],
-    rows,
-)
-
-plt.figure(figsize=(6, 4))
-plt.plot(alphas, kappas_a, "o-")
-plt.xscale("log")
-plt.xlabel("alpha")
-plt.ylabel("Число обусловленности kappa")
-plt.title("Влияние регуляризации на обусловленность")
-plt.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.savefig("kappa_vs_alpha.png", dpi=150)
-plt.close()
-
-
-
+# Масштабируем координаты по диагонали гессиана
 d = 1.0 / np.sqrt(oracle.hess_diag(x0))
-scaled = ScaledOracle(oracle, d)
-u_star = x_star / d
-u0 = x0 / d
 
+
+# Новый оракул в координатах x = d * u
+class ScaledOracle:
+
+    def __init__(self, oracle, d):
+        self.oracle = oracle
+        self.d = d
+        self.dim = oracle.dim
+
+    def f(self, u):
+        return self.oracle.f(self.d * u)
+
+    def grad(self, u):
+        return self.d * self.oracle.grad(self.d * u)
+
+    def hess(self, u):
+        H = self.oracle.hess(self.d * u)
+
+        return self.d[:, None] * H * self.d[None, :]
+
+
+scaled = ScaledOracle(oracle, d)
+
+u_star = x_star / d
+
+
+# Сравниваем собственные значения
 k_before, lo_before, hi_before, eig_x = hessian_stats(
     oracle.hess(x_star)
 )
+
 k_after, lo_after, hi_after, eig_u = hessian_stats(
     scaled.hess(u_star)
 )
 
+
 print_table(
-    "5. Эффект масштабирования по Якоби",
-    ["Показатель", "Исходная задача", "После масштабирования"],
+    "2. Эффект масштабирования по Якоби",
+    ["Показатель", "До", "После"],
     [
-        ("lambda_min", f"{lo_before:.6f}", f"{lo_after:.6f}"),
-        ("lambda_max", f"{hi_before:.6f}", f"{hi_after:.6f}"),
+        ("lambda_min", f"{lo_before:.4f}", f"{lo_after:.4f}"),
+        ("lambda_max", f"{hi_before:.4f}", f"{hi_after:.4f}"),
         ("kappa", f"{k_before:.2f}", f"{k_after:.2f}"),
     ],
 )
 
-print("\nСобственные значения гессиана в исходных координатах:")
-print(np.round(eig_x, 4))
 
-print("\nСобственные значения после масштабирования:")
-print(np.round(eig_u, 4))
-
-# Сравнение спектров
+# График спектра
 plt.figure(figsize=(7, 4))
+
 plt.semilogy(
     range(1, len(eig_x) + 1),
     eig_x,
     "o-",
     label="Исходная задача",
 )
+
 plt.semilogy(
     range(1, len(eig_u) + 1),
     eig_u,
-    "s-",
+    "s--",
     label="После масштабирования",
 )
+
 plt.xlabel("Номер собственного значения")
-plt.ylabel("Собственное значение (лог. шкала)")
+plt.ylabel("Собственное значение")
 plt.title("Спектр гессиана")
+
 plt.legend()
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
+
 plt.savefig("spectrum.png", dpi=150)
-plt.close()
+plt.show()
 
 
+spreads = [1, 5, 10, 30, 100]
 
-def contour_on_plane(ax, f, ref, i, j, title):
-    """Строит линии уровня, изменяя две координаты."""
-    gi = np.linspace(0, max(2.5 * ref[i], 1e-6), 120)
-    gj = np.linspace(0, max(2.5 * ref[j], 1e-6), 120)
-    Z = np.zeros((len(gj), len(gi)))
-
-    for a, vi in enumerate(gi):
-        for b, vj in enumerate(gj):
-            p = ref.copy()
-            p[i] = vi
-            p[j] = vj
-            Z[b, a] = f(p)
-
-    ax.contour(gi, gj, Z, levels=25)
-    ax.plot(ref[i], ref[j], "r*", markersize=12)
-    ax.set_xlabel(f"x{i + 1}")
-    ax.set_ylabel(f"x{j + 1}")
-    ax.set_title(title)
-
-
-i, j = 0, oracle.dim - 1
-
-fig, ax = plt.subplots(1, 2, figsize=(11, 4.5))
-
-contour_on_plane(
-    ax[0], oracle.f, x_star, i, j,
-    "Исходные координаты",
-)
-contour_on_plane(
-    ax[1], scaled.f, u_star, i, j,
-    "После масштабирования",
-)
-
-plt.tight_layout()
-plt.savefig("contours.png", dpi=150)
-plt.close()
-
-
-
-fig, ax = plt.subplots(1, 2, figsize=(10, 4))
-
-ax[0].plot(spreads, kappas_b, "o-")
-ax[0].set_xscale("log")
-ax[0].set_xlabel("b_spread")
-ax[0].set_ylabel("kappa")
-ax[0].set_title("Обусловленность от b_spread")
-ax[0].grid(True, alpha=0.3)
-
-ax[1].plot(mus, kappas_mu, "o-")
-ax[1].set_xscale("log")
-ax[1].set_xlabel("mu_pen")
-ax[1].set_ylabel("kappa")
-ax[1].set_title("Обусловленность от mu_pen")
-ax[1].grid(True, alpha=0.3)
-
-plt.tight_layout()
-plt.savefig("conditioning.png", dpi=150)
-plt.close()
-
-
-def newton_iters(o, start, tol=1e-6, max_iter=100):
-    """Количество шагов Ньютона до достижения допуска."""
-    x = start.copy()
-
-    for k in range(max_iter):
-        g = o.grad(x)
-
-        if np.linalg.norm(g) <= tol:
-            return k
-
-        H = o.hess(x)
-
-        try:
-            step = np.linalg.solve(H, g)
-        except np.linalg.LinAlgError:
-            return max_iter
-
-        fx = o.f(x)
-        t = 1.0
-
-        while t > 1e-10 and o.f(x - t * step) > fx:
-            t *= 0.5
-
-        if t <= 1e-10:
-            return max_iter
-
-        x = x - t * step
-
-    return max_iter
-
-
-def gd_iters(o, start, tol=1e-6, max_iter=20000):
-    """GD с постоянным шагом 1/L."""
-    xs = solution_point(o)
-
-    L_start = np.linalg.eigvalsh(o.hess(start)).max()
-    L_star = np.linalg.eigvalsh(o.hess(xs)).max()
-    L = max(L_start, L_star)
-
-    if L <= 0:
-        raise ValueError("Максимальное собственное значение должно быть положительным")
-
-    x = start.copy()
-
-    for k in range(max_iter):
-        g = o.grad(x)
-
-        if np.linalg.norm(g) <= tol:
-            return k
-
-        x = x - g / L
-
-    return max_iter
-
-
+kappas_b = []
 rows = []
 
-for name, o, start in [
-    ("Исходная", oracle, x0),
-    ("Масштабированная", scaled, u0),
-]:
-    gd = gd_iters(o, start)
-    nt = newton_iters(o, start)
+for spread in spreads:
+
+    # Создаём отдельную задачу
+    o = MediaMixOracle()
+
+    # Изменяем параметр насыщения каналов
+    o.b = o.b * spread
+
+    # Пересчитываем оптимум для новой задачи
+    o._x_star, o._f_star = o._solve()
+
+    xs = solution_point(o)
+
+    kappa, lam_min, lam_max, eig = hessian_stats(
+        o.hess(xs)
+    )
+
+    kappas_b.append(kappa)
 
     rows.append((
-        name,
-        gd,
-        "Да" if gd < 20000 else "Нет",
-        nt,
-        "Да" if nt < 100 else "Нет",
+        spread,
+        f"{lam_min:.4f}",
+        f"{lam_max:.4f}",
+        f"{kappa:.2f}",
     ))
 
+
 print_table(
-    "6. Сравнение GD и Ньютона (допуск 1e-6)",
-    ["Задача", "Итерации GD", "GD сошёлся?",
-     "Итерации Ньютона", "Ньютон сошёлся?"],
+    "3. Влияние b_spread на обусловленность",
+    ["b_spread", "lambda_min", "lambda_max", "kappa"],
     rows,
 )
 
 
-print("\nГрафики сохранены:")
-for filename in [
-    "kappa_vs_alpha.png",
-    "spectrum.png",
-    "contours.png",
-    "conditioning.png",
-]:
-    print(f"  {filename}")
+# График зависимости обусловленности
+plt.figure(figsize=(6, 4))
+
+plt.plot(spreads, kappas_b, "o-")
+
+plt.xscale("log")
+plt.xlabel("b_spread")
+plt.ylabel("Число обусловленности kappa")
+
+plt.title("Влияние b_spread")
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+
+plt.savefig("conditioning_b_spread.png", dpi=150)
+plt.show()
