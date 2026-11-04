@@ -67,7 +67,7 @@ def run_checks(cfg):
     oracle = _build_oracle(cfg["oracle"])
     x_probe = np.random.default_rng(0).standard_normal(oracle.dim)
     if isinstance(oracle, MediaMixOracle):             #изначально равномерное распределение бюджета
-        x0 = oracle.xbar.copy()
+        x0 = oracle.x_start.copy()
     else:
         x0 = np.zeros(oracle.dim)
 
@@ -119,7 +119,7 @@ def run_experiment(cfg):
 
     # fixed initial conditions
     if isinstance(oracle, MediaMixOracle):             #изначально равномерное распределение бюджета
-        x0 = oracle.xbar.copy()
+        x0 = oracle.x_start.copy()
     else:
         x0 = np.zeros(oracle.dim)
     history = method.run(x0)
