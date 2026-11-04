@@ -1,0 +1,20 @@
+oracle:
+  type: media_mix
+  n_channels: 6
+  budget: 100.0
+  mu: 1.0
+  rho: 10.0
+  alpha: 0.005
+  seed: 0
+
+method:
+  type: heavy_ball
+  beta: 0.9
+  max_iter: 5000
+  tol: 1.0e-6
+
+run:
+  x0: zeros
+
+seed: 42
+out_dir: results/logs
