@@ -10,6 +10,8 @@ method:
   type: adaptive
   strategy: backtrack
   eta0: 1
+  alpha: 0.5
+  beta_arm: 1.0e-4
   max_iter: 5000
   tol: 1.0e-06
 seed: 42
