@@ -13,4 +13,3 @@ method:
   tol: 1.0e-6
 
 seed: 42
-out_dir: results/logs
