@@ -12,8 +12,5 @@ method:
   max_iter: 5000
   tol: 1.0e-6
 
-run:
-  x0: zeros
-
 seed: 42
 out_dir: results/logs
