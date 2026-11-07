@@ -43,7 +43,7 @@ class AdaptiveStep(Method):
         return float(s @ y) / denom
 
     def _backtrack(self, x, g, direction) -> float:
-        eta = self.eta0
+        eta = self._eta
         fx = self.oracle.f(x)
         gx = float(g @ direction)
         for _ in range(50):
