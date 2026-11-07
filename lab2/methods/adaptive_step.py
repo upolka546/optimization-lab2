@@ -43,7 +43,7 @@ class AdaptiveStep(Method):
         return float(s @ y) / denom
 
     def _backtrack(self, x, g, direction) -> float:
-        eta = self._eta
+        eta = self._eta0
         fx = self.oracle.f(x)
         gx = float(g @ direction)
         for _ in range(50):
@@ -51,6 +51,8 @@ class AdaptiveStep(Method):
             if self.oracle.f(x_new) <= fx + self.beta_arm * eta * gx:
                 break
             eta *= self.alpha
+        else:
+            raise RuntimeError("Backtracking failed after 50 attempts.")
         return eta
 
     def _step(self, state: dict) -> dict:
