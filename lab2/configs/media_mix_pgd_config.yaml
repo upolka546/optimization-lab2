@@ -13,6 +13,7 @@ channels:
 
 budget: 100.0
 
+
 oracle_config:
   channels:
     - TV
@@ -21,21 +22,25 @@ oracle_config:
     - Search
     - Social
     - Radio
+
   a:
-    - 155.135
-    - 118.277
-    - 164.446
-    - 146.710
-    - 80.360
-    - 177.318
+    - 180.0
+    - 150.0
+    - 90.0
+    - 120.0
+    - 100.0
+    - 60.0
+
   b:
-    - 32.356
-    - 33.154
-    - 12.100
-    - 22.412
-    - 19.866
-    - 37.656
+    - 40.0
+    - 25.0
+    - 30.0
+    - 10.0
+    - 15.0
+    - 8.0
+
   budget: 100.0
+
 
 method_config:
   alpha0: 1.0       # initial trial step
