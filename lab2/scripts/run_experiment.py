@@ -3,6 +3,7 @@
 Embedded sanity checks (a minimal test system) run before the
 main experiment unless --no-checks is passed.
 """
+import time
 import argparse
 import json
 from pathlib import Path
@@ -122,9 +123,17 @@ def run_experiment(cfg):
         x0 = oracle.x_start.copy()
     else:
         x0 = np.zeros(oracle.dim)
-    history = method.run(x0)
+   start_time = time.perf_counter()
+   history = method.run(x0)
+   execution_time = time.perf_counter() - start_time
 
-    return {"oracle": oracle, "method": method, "history": history, "config": cfg}
+     return {
+     "oracle": oracle,
+     "method": method,
+     "history": history,
+     "config": cfg,
+     "execution_time": execution_time
+}
 
 
 def save_results(result, out_dir):
@@ -165,7 +174,7 @@ def main():
     result = run_experiment(cfg)
     path = save_results(result, args.out)
     print(f"Saved: {path}")
-
+    print(f"Время выполнения GD: {result['execution_time']:.6f} секунд")
 
 if __name__ == "__main__":
     main()
