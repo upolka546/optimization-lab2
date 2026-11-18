@@ -1,4 +1,4 @@
-
+import time
 import yaml
 import numpy as np
 
@@ -21,7 +21,11 @@ solver = PGDArmijo(
 )
 
 # Запускаем оптимизацию
+start_time = time.perf_counter()
 hist = solver.run()
+execution_time = time.perf_counter() - start_time
+
+print(f"Время выполнения PGD + Armijo: {execution_time:.6f} секунд")
 
 # Получаем оптимальное распределение бюджета
 x_opt = hist.x[-1]
